@@ -1,0 +1,29 @@
+.VPHome .VPHero.has-image .image-bg {
+  width: 248px;
+  height: 164px;
+  border-radius: 28px;
+  background-image: linear-gradient(
+    325deg,
+    rgb(107, 128, 146) 50%,
+    rgb(149, 215, 221) 50%
+  );
+  filter: blur(71px);
+  box-shadow:
+    0 24px 60px rgba(107, 128, 146, 0.22),
+    0 18px 48px rgba(149, 215, 221, 0.22);
+}
+
+@media (min-width: 640px) {
+  .VPHome .VPHero.has-image .image-bg {
+    width: 320px;
+    height: 212px;
+    border-radius: 32px;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHome .VPHero.has-image .image-bg {
+    width: 360px;
+    height: 238px;
+  }
+}
