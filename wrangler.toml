@@ -1,0 +1,7 @@
+name = "threadql-docs"
+compatibility_date = "2026-03-26"
+
+[assets]
+directory = "./docs/.vitepress/dist"
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
