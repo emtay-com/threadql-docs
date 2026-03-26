@@ -12,6 +12,8 @@ It is built for teams where the people who have the questions are not always the
 4. Results are posted as a formatted table in the Slack thread
 5. The user can ask follow-up questions in the same thread — ThreadQL remembers the context
 
+![ThreadQL answering a question and handling a follow-up in a Slack thread](/video_chat_2.png)
+
 For a deeper technical walkthrough, see [How It Works](/how-it-works/).
 
 ## Key concepts
@@ -19,6 +21,8 @@ For a deeper technical walkthrough, see [How It Works](/how-it-works/).
 ### Tenants
 
 ThreadQL is multi-tenant. Each tenant maps to one Slack workspace and one or more llm providers. You can run ThreadQL for multiple teams or clients from a single installation.
+
+![ThreadQL admin panel showing a tenant overview and Slack configuration](/admin_1.png)
 
 ### Definitions (business glossary)
 
@@ -51,6 +55,8 @@ For queries that return large result sets, ThreadQL can export to CSV:
 ### Follow-up queries
 
 When a user replies in the same Slack thread, ThreadQL treats it as a follow-up. The full conversation history (previous questions, SQL generated, and results) is included in the prompt, so the LLM can refine, drill down, or pivot based on what came before.
+
+![ThreadQL posting tabular results back into a Slack thread](/video_chat_1.png)
 
 ## Privacy by design
 

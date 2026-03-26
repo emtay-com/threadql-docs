@@ -28,6 +28,8 @@ ThreadQL needs an LLM to translate natural language into SQL.
 3. Enter your API key for your chosen provider (OpenAI, Anthropic, Ollama, etc.)
 4. Save the configuration
 
+![LLM provider configuration in the ThreadQL admin panel](/admin_2.png)
+
 Your API key is encrypted before being stored — see [Security](/guide/#security) for details.
 
 ### Multiple providers and fallback
@@ -66,6 +68,8 @@ After adding a datasource, scan it to discover the available tables:
 4. Assign priority scores to the tables your team queries most
 
 The top priority tables have their full schema (CREATE TABLE) included in every LLM prompt. This is what lets the AI write accurate SQL — it needs to know your column names, types, and relationships.
+
+![Tables list in the ThreadQL admin panel with priority scores](/admin_3.png)
 
 Tables without priority can still be queried. The LLM will fetch their schema on demand when it needs them.
 
