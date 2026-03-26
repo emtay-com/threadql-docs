@@ -88,191 +88,147 @@ curl -I http://localhost
 The `APP_KEY` is used to encrypt all stored credentials (database passwords, Slack tokens, LLM API keys). If your ThreadQL database is compromised, the credentials are useless without this key. Keep it in your environment config, never in version control.
 :::
 
+## Troubleshooting
+
+**Database connection issues:**
+- Verify MySQL is running: `docker-compose ps`
+- Check credentials in `.env` match the MySQL container config
+- Try connecting manually: `docker-compose exec mysql mysql -uroot -p`
+
+**Redis connection issues:**
+- Confirm Redis is running: `docker-compose ps`
+- Check the `REDIS_HOST` matches the container name in `docker-compose.yml`
+
+**Worker not processing jobs:**
+- Check worker logs: `docker-compose logs worker`
+- Verify Redis is reachable from the worker container
+- Check for failed jobs: `docker-compose exec threadql php artisan queue:failed`
+
+**Slack not receiving messages:**
+- Verify the Slack app is installed in your workspace
+- Check bot token permissions and signing secret
+- Ensure your ThreadQL URL is reachable from the internet (Slack needs to send webhooks). when working locally you should use a service like cloudlare tunnel.
+- Check application logs: `docker-compose logs threadql`
+
+---
+
 ## Helm chart (Kubernetes)
 
 For production deployments, ThreadQL includes a Helm chart.
 
-### Quick start
+### Prerequisites
+
+1. **A Kubernetes cluster** (k3s, EKS, GKE, DOKS, etc.)
+2. **Helm 3.x** installed
+
+### 0. Point your DNS to the cluster
+
+Get the external IP:
 
 ```bash
-# Add the repository
-helm repo add threadql https://theirritainer.github.io/threadql
-
-# Install
-helm install threadql threadql/threadql \
-  --namespace threadql --create-namespace
-
-# Upgrade
-helm upgrade threadql threadql/threadql
-
-# Uninstall
-helm uninstall threadql --namespace threadql
+kubectl get svc -l app.kubernetes.io/name=kubernetes-ingress
 ```
 
-### Customizing the deployment
+Create a DNS A record pointing your domain to the `EXTERNAL-IP`.
 
-Create a `values.yaml`:
+### 1. Add the Helm repository
 
-```yaml
-# Image version — single source of truth for all ThreadQL containers
-version: "0.1.0"
-
-replicaCount: 2
-
-app:
-  php:
-    image:
-      repository: emtay-com/threadql
-      pullPolicy: IfNotPresent
-
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-  hosts:
-    - host: threadql.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: threadql-tls
-      hosts:
-        - threadql.example.com
-
-resources:
-  limits:
-    cpu: 1000m
-    memory: 1Gi
-  requests:
-    cpu: 500m
-    memory: 512Mi
-
-env:
-  APP_ENV: production
-  APP_DEBUG: "false"
-  DB_CONNECTION: mysql
-  REDIS_HOST: threadql-redis
-
-# Secrets (encrypted in the cluster)
-secretEnv:
-  SLACK_BOT_TOKEN: xoxb-your-token
-  SLACK_SIGNING_SECRET: your-secret
-```
-
-### Database and Redis
-
-The chart can deploy MySQL and Redis alongside ThreadQL:
-
-```yaml
-mysql:
-  enabled: true
-  persistence:
-    size: 10Gi
-
-redis:
-  enabled: true
-  persistence:
-    size: 5Gi
-```
-
-### SSH tunnel for databases
-
-If your datasource database is behind a bastion host:
-
-```yaml
-sshTunnel:
-  enabled: true
-  host: bastion.example.com
-  port: 22
-  user: ubuntu
-  databaseHost: internal-db.example.com
-  databasePort: 3306
-```
-
-### Ingress options
-
-**HAProxy with cert-manager:**
 ```bash
-helm install threadql helm/threadql -f helm/threadql/haproxy-tls.values.yaml
+helm repo add emtay https://emtay-com.github.io/helm-charts
+helm repo update
 ```
 
-**Traefik with cert-manager (k3s):**
-```bash
-helm install threadql helm/threadql -f helm/threadql/traefik-tls.values.yaml
-```
+### 2. Install cert-manager (required for TLS)
 
-Both require cert-manager:
+cert-manager must be installed **before** deploying ThreadQL. It manages TLS certificates via Let's Encrypt.
+
 ```bash
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+kubectl wait --for=condition=Available deploy --all -n cert-manager --timeout=120s
 ```
 
-### Running migrations
+Verify it's running:
 
 ```bash
-helm upgrade threadql threadql/threadql \
-  --namespace threadql --set migrationJob.enabled=true
+kubectl get pods -n cert-manager
 ```
 
-### Docker registry credentials
+All three pods (`cert-manager`, `cert-manager-cainjector`, `cert-manager-webhook`) should be `Running` and `Ready`.
 
-If your image repository requires authentication:
+### 3. Create your values file
+
+Copy the appropriate example and fill in your values:
+
+**Cloud providers (no built-in ingress controller) — uses HAProxy:**
 
 ```bash
-kubectl create secret docker-registry registry-credentials \
-  --docker-server=https://index.docker.io/v1/ \
-  --docker-username=YOUR_USERNAME \
-  --docker-password=YOUR_PASSWORD
+cp helm/threadql/haproxy.values.yaml.example helm/threadql/my-values.yaml
 ```
 
-```yaml
-imagePullSecrets:
-  - name: registry-credentials
+**k3s (ships with Traefik):**
+
+```bash
+cp helm/threadql/traefik.values.yaml.example helm/threadql/my-values.yaml
 ```
 
-### Monitoring
+Edit `my-values.yaml` and set:
 
-```yaml
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
+| Value | Description |
+|-------|-------------|
+| `mysql.rootPassword` | MySQL root password |
+| `ingress.hosts[0].host` | Your domain (e.g. `threadql.example.com`) |
+| `ingress.tls[0].hosts[0]` | Same domain |
+| `certManager.email` | Email for Let's Encrypt notifications |
+| `env.APP_KEY` | Generate with `php artisan key:generate --show` |
+| `env.APP_URL` | `https://your-domain.com` |
+| `env.JWT_SECRET` | Random 64-character string |
+| `env.MASTER_ADMIN_PASSWORD` | Admin panel password |
+
+### 4. Deploy
+
+```bash
+helm upgrade --install app emtay/threadql \
+  -f helm/threadql/my-values.yaml
 ```
 
-### Release workflow
+Or from the local chart:
 
-ThreadQL includes a GitHub Actions workflow that builds versioned Docker images on release:
+```bash
+helm dependency build helm/threadql
+helm upgrade --install app helm/threadql \
+  -f helm/threadql/values.yaml \
+  -f helm/threadql/my-values.yaml
+```
 
-1. Update `version` in `helm/threadql/values.yaml`
-2. Create and push a git tag: `git tag v0.1.0 && git push origin v0.1.0`
-3. Create a GitHub release from the tag
-4. The workflow builds and pushes `emtay-com/threadql:0.1.0` and `:latest`
+### Verify TLS
 
-The `version` field in `values.yaml` is the single source of truth for image tags.
+The TLS certificate will be issued automatically after rollout once DNS propagates (typically 1-5 minutes).
+
+```bash
+kubectl get certificate          # Should show READY=True
+kubectl get clusterissuer        # Should show READY=True
+curl -I https://your-domain.com  # Should return 200 with valid cert
+```
+
+### Troubleshooting TLS
+
+If the certificate is not issued:
+
+```bash
+kubectl describe certificate threadql-tls
+kubectl describe challenge -A
+kubectl get order -A
+kubectl logs -n cert-manager deploy/cert-manager
+```
+
+**Common issues:**
+
+- **"ClusterIssuer not found"** — cert-manager was not installed before deploying. Install it and redeploy.
+- **Challenge times out** — The solver `ingressClassName` in `certManager.solvers` must match `ingress.className`. If you use HAProxy, both must be `haproxy`. If Traefik, both must be `traefik`.
+- **Webhook errors on install** — cert-manager's webhook needs a few seconds after installation. Wait and retry: `kubectl wait --for=condition=Available deploy --all -n cert-manager --timeout=120s`
+
 
 ## Scheduled table scans
-
-To keep ThreadQL's schema knowledge up to date as your database evolves, set up a scheduled scan.
-
-Set the scan time in tenant settings (e.g., `02:00`), then run the artisan command on a cron. In Kubernetes:
-
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: schema-schedule-scans
-spec:
-  schedule: "*/30 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: schedule-scans
-            image: emtay-com/threadql:latest
-            command: ["php", "artisan", "schema:schedule-scans"]
-          restartPolicy: OnFailure
-```
 
 Or run manually:
 ```bash
@@ -304,29 +260,6 @@ Clean up when done:
 ```bash
 kubectl delete namespace postgresdemo
 ```
-
-## Troubleshooting
-
-**Database connection issues:**
-- Verify MySQL is running: `docker-compose ps`
-- Check credentials in `.env` match the MySQL container config
-- Try connecting manually: `docker-compose exec mysql mysql -uroot -p`
-
-**Redis connection issues:**
-- Confirm Redis is running: `docker-compose ps`
-- Check the `REDIS_HOST` matches the container name in `docker-compose.yml`
-
-**Worker not processing jobs:**
-- Check worker logs: `docker-compose logs worker`
-- Verify Redis is reachable from the worker container
-- Check for failed jobs: `docker-compose exec threadql php artisan queue:failed`
-
-**Slack not receiving messages:**
-- Verify the Slack app is installed in your workspace
-- Check bot token permissions and signing secret
-- Ensure your ThreadQL URL is reachable from the internet (Slack needs to send webhooks)
-- Check application logs: `docker-compose logs threadql`
-
 ---
 
 Next: [Set up your first tenant and Slack app](/setup/)
