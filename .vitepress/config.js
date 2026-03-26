@@ -7,7 +7,7 @@ export default {
   ],
 
   themeConfig: {
-    logo: '/threadql-transparent.png',
+    logo: '/threadql_logo-transparent.png',
 
     nav: [
       { text: 'Guide', link: '/guide/' },

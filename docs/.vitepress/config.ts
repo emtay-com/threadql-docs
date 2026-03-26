@@ -12,7 +12,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: '/threadql_logo.png',
+    logo: '/threadql_logo-transparent.png',
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/' },
